@@ -37,10 +37,11 @@ Ammo().then(function (AmmoLib) {
 });
 
 const start = () => {
-
   const overlay = document.getElementById('overlay');
   overlay.remove();
-  initAudio()
+  audio.play();
+  // 向场景中添加音频对象和参数对象
+  helper.add(audio, { delayTime: 0 });
   ready = true
 }
 
@@ -135,6 +136,9 @@ function init() {
     physicsHelper.visible = false;
     scene.add(physicsHelper);
 
+    initAudio()
+
+
     initGui();
 
   }, onProgress, null);
@@ -167,7 +171,7 @@ function init() {
         // 继续音频的播放
         audio.play();
         // 向场景中添加音频对象和参数对象
-        helper.add(audio, { delayTime: 160 * 1 / 30 });
+        helper.add(audio, { delayTime: 0 });
         // 同步音频对象的动画
         //helper._syncAudio(audio);
 
@@ -235,10 +239,7 @@ function initAudio() {
   new THREE.AudioLoader().load(audioFile, function (buffer) {
 
     audio = new THREE.Audio(listener).setBuffer(buffer);
-    audio.setLoop(false);
-    helper.add(audio, { delayTime: 0 });
-
-    ready = true;
+    audio.setLoop(true);
 
   }, onProgress, null);
 }
@@ -272,7 +273,6 @@ function render() {
 }
 </script>
 <style scoped>
-
 #overlay {
   position: absolute;
   font-size: 16px;
