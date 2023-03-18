@@ -6,8 +6,8 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  assetsInclude: ['**/*.*'],
-  plugins: [vue(),tsconfigPaths()],
+  assetsInclude: ['./public/**/*.*'],
+  plugins: [vue()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
