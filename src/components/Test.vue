@@ -98,7 +98,7 @@ function init() {
     window.addEventListener('resize', onWindowResize);
 
     initListener()
-
+    animate()
 }
 
 
