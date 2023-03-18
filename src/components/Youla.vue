@@ -127,7 +127,6 @@ function init() {
         animation: cameraAnimation
       });
     })
-
     ikHelper = helper.objects.get(mesh).ikSolver.createHelper();
     ikHelper.visible = false;
     scene.add(ikHelper);
@@ -162,6 +161,7 @@ function init() {
     gui.add(api, 'animation').onChange(function (value) {
 
       helper.enable('animation', api['animation']);
+      helper.enable('cameraAnimation', api['animation']);
       if (value) {
 
         // 继续音频的播放
@@ -182,8 +182,6 @@ function init() {
 
 
       }
-      console.log(helper);
-
     });
 
     gui.add(api, 'ik').onChange(function () {
