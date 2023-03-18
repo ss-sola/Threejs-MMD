@@ -10,6 +10,7 @@
   "dependencies": {
     "dat.gui": "^0.7.9",
     "three": "^0.150.1",
+    "vite-tsconfig-paths": "^4.0.7",
     "vue": "^3.2.47",
     "vue-router": "^4.1.6"
   },
