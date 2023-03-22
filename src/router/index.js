@@ -12,6 +12,14 @@ const router = createRouter({
       component: () => import('@/components/MMDMove.vue'),
     },
     {
+      path:'/petals',
+      component: () => import('@/components/Petals.vue'),
+    },
+    {
+      path:'/points',
+      component: () => import('@/components/Points.vue'),
+    },
+    {
       path:'/test',
       component: () => import('@/components/Test.vue'),
     }

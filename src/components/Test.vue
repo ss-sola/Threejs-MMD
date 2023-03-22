@@ -1,378 +1,230 @@
 <template>
-    <div class="contioner"></div>
+    <div id="app">
+        <canvas ref="canvas"></canvas>
+    </div>
 </template>
   
-<script setup>
-import * as THREE from 'three';
-
-import Stats from 'three/addons/libs/stats.module.js';
-import { onMounted } from 'vue';
-//   import {require} from 
-//导入dat.gui
-import * as dat from "dat.gui";
-
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
-import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
-import { CCDIKSolver } from 'three/addons/animation/CCDIKSolver.js';
-import { Capsule } from 'three/addons/math/Capsule.js';
-import { Octree } from 'three/addons/math/Octree.js';
-import { OctreeHelper } from 'three/addons/helpers/OctreeHelper.js';
-
-
-let stats;
-
-let camera, scene, renderer, effect;
-let ready, listener
-
-let container
-
-
-const clock = new THREE.Clock();
-
-
-
-Ammo().then(function (AmmoLib) {
-
-    Ammo = AmmoLib;
-    init();
-    initScenceModel()
-    //animate();
-
-
-});
-
-function init() {
-
-    container = document.createElement('div');
-    container.style.position = "fixed"
-    container.style.left = 0
-    container.style.top = 0
-    document.body.appendChild(container);
-
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
-    camera.rotation.order = 'YXZ';
-    camera.position.z = 50;
-    camera.position.y = 30;
-
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
-
-    const gridHelper = new THREE.PolarGridHelper(40, 10);
-    //gridHelper.position.y = - 10;
-    scene.add(gridHelper);
-
-
-    // 对光照进行调整
-    const ambient = new THREE.AmbientLight(0xffffff, 0.95);
-    scene.add(ambient);
-
-    // const directionalLight = new THREE.DirectionalLight(0xffffff);
-    // directionalLight.position.set(- 10, 100, 10).normalize();
-    // scene.add(directionalLight);
-
-    //
-
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    // renderer.shadowMap.enabled = true;
-    // renderer.shadowMap.type = THREE.VSMShadowMap;
-    // renderer.outputEncoding = THREE.sRGBEncoding;
-    // renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    container.appendChild(renderer.domElement);
-
-    effect = new OutlineEffect(renderer);
-
-    // STATS
-
-    stats = new Stats();
-    container.appendChild(stats.dom);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.minDistance = 10;
-    controls.maxDistance = 100;
-
-    window.addEventListener('resize', onWindowResize);
-
-    initListener()
-    animate()
-}
-
-
-
-
-
-function onProgress(xhr) {
-
-    if (xhr.lengthComputable) {
-
-        const percentComplete = xhr.loaded / xhr.total * 100;
-        //console.log(Math.round(percentComplete, 2) + '% downloaded');
-
-    }
-
-
-}
-
-
-function initListener() {
-    container.addEventListener('mousedown', () => {
-
-        document.body.requestPointerLock();
-
-        mouseTime = performance.now();
-
-    });
-    document.body.addEventListener('mousemove', (event) => {
-        if (document.pointerLockElement === document.body) {
-            camera.rotation.y -= event.movementX / 500;
-            camera.rotation.x -= event.movementY / 500;
-
-        }
-
-    });
-    document.addEventListener('keydown', (event) => {
-
-        keyStates[event.code] = true;
-
-    });
-
-    document.addEventListener('keyup', (event) => {
-
-        keyStates[event.code] = false;
-
-    });
-}
-
-
-function onWindowResize() {
-
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-
-    effect.setSize(window.innerWidth, window.innerHeight);
-
-}
-
-const STEPS_PER_FRAME = 5
-function animate() {
-
-    const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
-
-    for (let i = 0; i < STEPS_PER_FRAME; i++) {
-        controls(deltaTime);
-        updatePlayer(deltaTime);
-        // updateSpheres(deltaTime);
-        // teleportPlayerIfOob();
-    }
-
-
-    effect.render(scene, camera);
-
-    stats.update();
-    requestAnimationFrame(animate);
-
-}
-
-const worldOctree = new Octree();
-const playerCollider = new Capsule(new THREE.Vector3(0, 10, 50), new THREE.Vector3(0, 40, 20), 0.35);
-const playerVelocity = new THREE.Vector3();
-const playerDirection = new THREE.Vector3();
-
-let playerOnFloor = true;
-let mouseTime = 0;
-const GRAVITY = 30;
-const keyStates = {};
-
-function controls(deltaTime) {
-
-    // gives a bit of air control
-    const speedDelta = deltaTime * (playerOnFloor ? 30 : 15);
-
-    if (keyStates['KeyW']) {
-
-        playerVelocity.add(getForwardVector().multiplyScalar(speedDelta));
-
-    }
-
-    if (keyStates['KeyS']) {
-
-        playerVelocity.add(getForwardVector().multiplyScalar(- speedDelta));
-
-    }
-
-    if (keyStates['KeyA']) {
-
-        playerVelocity.add(getSideVector().multiplyScalar(- speedDelta));
-
-    }
-
-    if (keyStates['KeyD']) {
-
-        playerVelocity.add(getSideVector().multiplyScalar(speedDelta));
-
-    }
-
-    if (playerOnFloor) {
-
-        if (keyStates['Space']) {
-
-            playerVelocity.y = 15;
-
-        }
-
-    }
-    if (keyStates['Ctrl']) {
-
-        playerVelocity.y = -15;
-
-    }
-
-
-}
-function getSideVector() {
-
-    camera.getWorldDirection(playerDirection);
-    playerDirection.y = 0;
-    playerDirection.normalize();
-    playerDirection.cross(camera.up);
-
-    return playerDirection;
-
-}
-function getForwardVector() {
-
-    camera.getWorldDirection(playerDirection);
-    playerDirection.y = 0;
-    playerDirection.normalize();
-
-    return playerDirection;
-
-}
-function updatePlayer(deltaTime) {
-
-    let damping = Math.exp(- 4 * deltaTime) - 1;
-
-    if (!playerOnFloor) {
-
-        playerVelocity.y -= GRAVITY * deltaTime;
-
-        // small air resistance
-        damping *= 0.1;
-
-    }
-
-    playerVelocity.addScaledVector(playerVelocity, damping);
-
-    const deltaPosition = playerVelocity.clone().multiplyScalar(deltaTime);
-    playerCollider.translate(deltaPosition);
-
-    playerCollisions();
-
-    camera.position.copy(playerCollider.end);
-
-}
-function playerCollisions() {
-
-    const result = worldOctree.capsuleIntersect(playerCollider);
-
-    if (camera.position.y >= 0) {
-        playerOnFloor = true;
-    } else {
-        playerOnFloor = false;
-    }
-
-    console.log(result);
-
-    if (result) {
-
-        playerOnFloor = result.normal.y > 0;
-        // if (camera.position.y <= 0) {
-        //     playerOnFloor = true;
-        // }
-        console.log(camera.position.y);
-
-
-        if (!playerOnFloor) {
-
-            playerVelocity.addScaledVector(result.normal, - result.normal.dot(playerVelocity));
-
-        }
-
-        playerCollider.translate(result.normal.multiplyScalar(result.depth));
-
-    }
-
-}
-
-function initScenceModel() {
-    const loader = new GLTFLoader().setPath('/scence/');
-
-    loader.load('la_night_city.glb', (gltf) => {
-
-        console.log(gltf);
-        scene.add(gltf.scene);
-
-        worldOctree.fromGraphNode(gltf.scene);
-
-        gltf.scene.traverse(child => {
-
-            if (child.isMesh) {
-
-                child.castShadow = true;
-                child.receiveShadow = true;
-
-                if (child.material.map) {
-
-                    child.material.map.anisotropy = 4;
-
-                }
+<script>
+import { onMounted, ref } from "vue";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { color } from "dat.gui";
+
+export default {
+    setup() {
+        const canvas = ref(null);
+
+
+        onMounted(() => {
+            // 创建场景
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            // 创建相机
+            const camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 10, 20);
+
+            // 创建渲染器
+            const renderer = new THREE.WebGLRenderer({
+                canvas: canvas.value,
+                antialias: true,
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            // 创建轨道控制器
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.minDistance = 1;
+            controls.maxDistance = 1000;
+            controls.enableDamping = true;
+
+            // 创建灯光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+
+            let total = 10;//烟花数
+            let fireworks = [], isDead = []
+            // 创建烟花粒子
+            const particleCount = 1000; // 粒子数量
+            const particleSize = 0.1; // 粒子大小
+            const particleSpeed = 40; // 粒子速度
+
+
+            for (var i = 0; i < total; i++) {
+                // 创建烟花几何体
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute(
+                    "position",
+                    new THREE.Float32BufferAttribute(
+                        new Array(particleCount * 3).fill(0),
+                        3
+                    )
+                );
+                geometry.setAttribute(
+                    "velocity",
+                    new THREE.Float32BufferAttribute(
+                        new Array(particleCount * 3).fill(0),
+                        3
+                    )
+                );
+
+                const color = Math.random() * 0xffffff
+                // 创建烟花材质
+                const material = new THREE.PointsMaterial({
+                    size: particleSize,
+                    color: color,
+                    transparent: true,
+                    depthTest: false,
+                    //blending: THREE.AdditiveBlending,
+                });
+                const pointLight = new THREE.PointLight(color, 1);
+                // 创建烟花对象
+                const firework = new THREE.Points(geometry, material);
+                firework.add(pointLight)
+                fireworks.push(firework)
+                // 将烟花添加到场景中
+                scene.add(firework);
+                isDead[i] = 0
 
             }
 
+            // 定义一个函数，用于初始化烟花的位置和速度
+            const initFireworks = () => {
+                for (let i = 0; i < total; i++) {
+                    isDead[i] = clock.getElapsedTime()
+                    setTimeout(() => {
+                        // 获取烟花的位置和速度属性
+                        const positions = fireworks[i].geometry.attributes.position.array;
+                        const velocities = fireworks[i].geometry.attributes.velocity.array;
+
+                        var x = Math.random() * 100 - 50;
+                        var y = Math.random() * 10 + 5;
+                        var z = Math.random() * 5 - 15;
+                        // 遍历每个粒子
+                        for (let i = 0; i < particleCount; i++) {
+                            // 设置粒子的初始位置为原点
+                            positions[i * 3] = x;
+                            positions[i * 3 + 1] = y;
+                            positions[i * 3 + 2] = z;
+
+                            // 设置一个随机的角度和半径
+                            const angle = Math.random() * Math.PI * 2;
+                            const angle2 = Math.random() * Math.PI * 2;
+                            const radius = Math.random() * 3;
+
+                            // 设置粒子的初始速度为沿着球面均匀分布的方向和大小
+                            velocities[i * 3] = radius * Math.cos(angle);
+                            velocities[i * 3 + 1] = radius * Math.sin(angle);
+                            velocities[i * 3 + 2] = 0
+
+                        }
+
+
+                        // 更新烟花的位置和速度属性
+                        fireworks[i].geometry.attributes.position.needsUpdate = true;
+                        fireworks[i].geometry.attributes.velocity.needsUpdate = true;
+                    }, Math.random() * 5000)
+
+
+                }
+
+            };
+
+
+
+            // 定义一个函数，用于更新烟花的位置和速度
+            const updateFireworks = (delta) => {
+                for (let i = 0; i < total; i++) {
+                    // 获取烟花的位置和速度属性
+                    const positions = fireworks[i].geometry.attributes.position.array;
+                    const velocities = fireworks[i].geometry.attributes.velocity.array;
+
+                    // 定义一个变量，用于判断烟花是否已经消失
+
+
+                    // 遍历每个粒子
+                    for (let i = 0; i < particleCount; i++) {
+                        // 获取粒子的位置和速度
+                        const x = positions[i * 3];
+                        const y = positions[i * 3 + 1];
+                        const z = positions[i * 3 + 2];
+                        const vx = velocities[i * 3];
+                        const vy = velocities[i * 3 + 1];
+                        const vz = velocities[i * 3 + 2];
+
+                        // 更新粒子的位置，根据速度和时间间隔
+                        positions[i * 3] += vx * delta;
+                        positions[i * 3 + 1] += vy * delta;
+                        positions[i * 3 + 2] += vz * delta;
+
+                        // 更新粒子的速度，根据重力加速度
+                        velocities[i * 3 + 1] -= particleSpeed / particleCount;
+
+                    }
+
+                    // 更新烟花的位置和速度属性
+                    fireworks[i].geometry.attributes.position.needsUpdate = true;
+                    fireworks[i].geometry.attributes.velocity.needsUpdate = true;
+
+                    // 如果烟花已经消失，重新初始化烟花
+                    const time = clock.getElapsedTime()
+
+                    for (var j = 0; j < total; j++) {
+                        if (time - isDead[i] >= 3) {
+
+                            initFireworks();
+                        }
+                    }
+
+                }
+
+            };
+
+            // 定义一个函数，用于渲染场景
+            const render = () => {
+                // 获取时间间隔
+                const delta = clock.getDelta();
+
+                // 更新轨道控制器
+                //controls.update();
+
+                // 更新烟花的位置和速度
+                updateFireworks(delta);
+                // 渲染场景
+                renderer.render(scene, camera);
+
+                // 请求下一帧动画
+                requestAnimationFrame(render);
+            };
+
+            // 创建一个时钟对象，用于计算时间间隔
+            const clock = new THREE.Clock();
+
+
+            // 初始化烟花
+            initFireworks();
+
+
+            // 开始渲染场景
+            render();
         });
 
-        const helper = new OctreeHelper(worldOctree);
-        helper.visible = false;
-        scene.add(helper);
-
-        // const gui = new dat.GUI({ width: 200 });
-        // gui.add({ debug: false }, 'debug')
-        //     .onChange(function (value) {
-
-        //         helper.visible = value;
-
-        //     });
-    });
-}
+        return {
+            canvas,
+        };
+    },
+};
 </script>
-<style scoped>
-#overlay {
-    position: absolute;
-    font-size: 16px;
-    z-index: 2;
-    top: 0;
+<style>
+canvas {
+    position: fixed;
     left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    background: rgba(0, 0, 0, 0.7);
+    top: 0;
 }
-
-#overlay button {
-    background: transparent;
-    border: 0;
-    border: 1px solid rgb(255, 255, 255);
-    border-radius: 4px;
-    color: #ffffff;
-    padding: 12px 18px;
-    text-transform: uppercase;
-    cursor: pointer;
-}
-</style>
+</style>  

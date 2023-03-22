@@ -1,11 +1,13 @@
 <template>
+  <div id="canvas-container" class="canvas-container" ref="screenDom"></div>
   <div id="overlay">
-    <button @click="start" id="startButton">Play</button>
+    <button @click="start" id="startButton">{{ progress == 100 ? 'play' : progress + '%' }}</button>
   </div>
 </template>
 
 <script setup>
 import * as THREE from 'three';
+import { defineComponent, onMounted, ref } from "vue";
 
 import Stats from 'three/addons/libs/stats.module.js';
 
@@ -16,15 +18,27 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
 import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 
 let stats;
 
 let mesh, camera, scene, renderer, effect;
 let helper, ikHelper, physicsHelper;
-let ready, listener, audio;
+let ready, listener, audio, loader;
 
+let composer, outlinePass
 const clock = new THREE.Clock();
 
+
+//资源加载完毕时渲染画面
+let progress = ref(0);
+
+THREE.DefaultLoadingManager.onProgress = function (item, loaded, total) {
+  // console.log(item, loaded, total);
+  progress.value = new Number((loaded / total) * 100).toFixed(2);
+};
 
 
 Ammo().then(function (AmmoLib) {
@@ -32,11 +46,10 @@ Ammo().then(function (AmmoLib) {
   Ammo = AmmoLib;
   init();
   animate();
-
-
 });
 
 const start = () => {
+  if (progress.value != 100) return;
   const overlay = document.getElementById('overlay');
   overlay.remove();
   audio.play();
@@ -46,15 +59,9 @@ const start = () => {
 }
 
 
-
-
 function init() {
 
-  const container = document.createElement('div');
-  container.style.position = "fixed"
-  container.style.left = 0
-  container.style.top = 0
-  document.body.appendChild(container);
+  const container = document.getElementById("canvas-container")
 
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
   camera.position.z = 50;
@@ -67,17 +74,17 @@ function init() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-
-  const gridHelper = new THREE.PolarGridHelper(40, 10);
-  //gridHelper.position.y = - 10;
-  scene.add(gridHelper);
+  scene.fog = new THREE.Fog(0x000000, 0, 500);
+  // const gridHelper = new THREE.PolarGridHelper(40, 10);
+  // //gridHelper.position.y = - 10;
+  // scene.add(gridHelper);
 
 
   // 对光照进行调整
   const ambient = new THREE.AmbientLight(0xffffff, 0.95);
   scene.add(ambient);
 
-  // const directionalLight = new THREE.DirectionalLight(0xffffff);
+  // const directionalLight = new THREE.DirectionalLight(0xffffff,0.4);
   // directionalLight.position.set(- 10, 100, 10).normalize();
   // scene.add(directionalLight);
 
@@ -95,11 +102,6 @@ function init() {
   stats = new Stats();
   container.appendChild(stats.dom);
 
-  // model
-
-
-
-
   const modelFile = './mmd/model/优拉/model.pmx';
   const vmdFiles = ['./mmd/vmd/热爱105度的你/action.vmd'];
 
@@ -107,7 +109,7 @@ function init() {
     afterglow: 2.0
   });
 
-  const loader = new MMDLoader();
+  loader = new MMDLoader();
 
   loader.loadWithAnimation(modelFile, vmdFiles, function (mmd) {
 
@@ -121,6 +123,7 @@ function init() {
     });
 
     helper.enable('ik', false);
+    effect.enabled = false
     const cameraFiles = ['./mmd/vmd/热爱105度的你/camera.vmd'];
     loader.loadAnimation(cameraFiles, camera, function (cameraAnimation) {
 
@@ -143,18 +146,31 @@ function init() {
 
   }, onProgress, null);
 
+  loadModel('/scence/《弹指醉》场景配布/scene.pmx')
+
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.minDistance = 10;
-  controls.maxDistance = 100;
+  controls.minDistance = 1;
+  controls.maxDistance = 1000;
 
   window.addEventListener('resize', onWindowResize);
+
+  initPointLight(30, 7, 20)
+  initPointLight(30, 7, -20)
+  initPointLight(-30, 7, 20)
+  initPointLight(-30, 7, -20)
+  initPetals()
+
+  instFireworks()
+  initFireworks()
+
+
 
   function initGui() {
 
     const api = {
       'animation': true,
       'ik': false,
-      'outline': true,
+      'outline': false,
       'physics': true,
       'show IK bones': false,
       'show rigid bodies': false
@@ -222,6 +238,8 @@ function init() {
   }
 
 }
+
+
 function onProgress(xhr) {
 
   if (xhr.lengthComputable) {
@@ -257,22 +275,274 @@ function animate() {
   requestAnimationFrame(animate);
 
   stats.begin();
-  render();
+  if (ready) {
+    helper.update(clock.getDelta());
+    updatePetals()
+    updateFireworks(clock.getDelta())
+  }
+
+  effect.render(scene, camera);
   stats.end();
 
 }
 
-function render() {
-  if (ready) {
-    helper.update(clock.getDelta());
-    //helper.audioManager.control(clock.getDelta());
+// 创建一个数组，用于存储100个花瓣对象
+var petals = [];
+function initPetals() {
+  //endRander()
+  var shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.bezierCurveTo(0.5, 1.5, 1.5, 1.5, 2, 0);
+  shape.bezierCurveTo(1.5, -1.5, 0.5, -1.5, 0, 0);
+
+  // 创建一个花瓣的几何体
+  const geometry = new THREE.ShapeGeometry(shape);
+
+  // 创建一个纹理加载器，用于加载花瓣的图片
+  var textureLoader = new THREE.TextureLoader();
+  var material = new THREE.MeshBasicMaterial({
+    map: textureLoader.load('/textures/h.jpg'), // 使用Getty Images提供的图片作为纹理
+    transparent: true // 设置透明度为true，以便显示图片中的透明部分
+  });
+
+  // 循环创建100个花瓣对象，并添加到场景中
+  for (var i = 0; i < 100; i++) {
+    // 创建一个网格对象，使用上面定义的几何体和材质
+    var petal = new THREE.Mesh(geometry, material);
+
+    // 随机设置花瓣的位置和旋转角度
+    petal.position.x = Math.random() * 100 - 50;
+    petal.position.y = Math.random() * 100 - 50;
+    petal.position.z = Math.random() * 100 - 50;
+    petal.rotation.x = Math.random() * Math.PI * 2;
+    petal.rotation.y = Math.random() * Math.PI * 2;
+    petal.rotation.z = Math.random() * Math.PI * 2;
+
+    // 随机设置花瓣的速度
+    petal.velocityX = Math.random() * 0.2 - 0.01;
+    petal.velocityY = -Math.random() * 0.01 - 0.05;
+    petal.velocityZ = Math.random() * 0.02 - 0.01;
+
+    petal.material.side = THREE.DoubleSide;
+    petal.scale.set(0.5, 0.2, 0.5);
+    // 将花瓣对象添加到数组中
+    petals.push(petal);
+    // 将立方体添加到selectedObjects数组中
+    //outlinePass.selectedObjects.push(petal);
+
+    // 将花瓣对象添加到场景中
+    scene.add(petal);
+  }
+}
+
+function updatePetals() {
+  // 循环遍历所有的花瓣对象，并更新它们的位置和旋转角度 
+  for (var i = 0; i < petals.length; i++) {
+    var petal = petals[i];
+
+    // // 更新速度和加速度 
+    // petal.velocityX += petal.accelerationX;
+    // petal.velocityY += petal.accelerationY;
+    // petal.velocityZ += petal.accelerationZ;
+
+    // 更新位置和旋转角度 
+    petal.position.x += petal.velocityX;
+    petal.position.y += petal.velocityY;
+    petal.position.z += petal.velocityZ;
+    petal.rotation.x += petal.velocityX / 10;
+    petal.rotation.y += petal.velocityY / 10;
+    // 如果花瓣的位置超出了屏幕的范围，就将它重置到屏幕顶部 
+    if (petal.position.y < -5) {
+      petal.position.x = Math.random() * 100 - 50;
+      petal.position.y = 60;
+      petal.position.z = Math.random() * 100 - 50;
+      petal.velocityX = Math.random() * 0.02 - 0.01;
+      petal.velocityY = -Math.random() * 0.1 - 0.05;
+      petal.velocityZ = Math.random() * 0.02 - 0.01;
+    }
+  }
+}
+
+function initPointLight(x, y, z) {
+  // 创建球体当灯泡
+  let radius = 1.5;
+  const sphereGeometry = new THREE.SphereGeometry(0.15, 32, 32);
+  const sphereMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xffffff,
+    emissiveIntensity: 10,
+  });
+  const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  //pointLightArr.push(sphere);
+  sphere.position.set(x, y, z);
+
+  let pointLight = new THREE.PointLight(0xebce97, 0.05);
+  sphere.add(pointLight);
+  scene.add(sphere)
+}
+
+function loadModel(path) {
+
+  if (mesh) {
+    scene.remove(mesh);
+  }
+  loader.load(path, (mmd) => {
+    mesh = mmd;
+
+    scene.add(mesh)
+    console.log(mesh);
+
+  }, onProgress, null)
+}
+
+let total = 10;//烟花数
+let fireworks = [], isDead = []
+const particleCount = 1000; // 粒子数量
+const particleSize = 1.0; // 粒子大小
+
+
+function instFireworks() {
+  for (var i = 0; i < total; i++) {
+    // 创建烟花粒子
+
+    const color = Math.random() * 0xffffff
+    // 创建烟花几何体
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        new Array(particleCount * 3).fill(0),
+        3
+      )
+    );
+    geometry.setAttribute(
+      "velocity",
+      new THREE.Float32BufferAttribute(
+        new Array(particleCount * 3).fill(0),
+        3
+      )
+    );
+
+    // 创建烟花材质
+    const material = new THREE.PointsMaterial({
+      size: particleSize,
+      color: color,
+      transparent: true,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+    });
+    //const pointLight = new THREE.PointLight(color, 0.05);
+    // 创建烟花对象
+    const firework = new THREE.Points(geometry, material);
+    //firework.add(pointLight)
+    fireworks.push(firework)
+    // 将烟花添加到场景中
+    scene.add(firework);
+    isDead[i] = 0
+
+  }
+}
+
+// 定义一个函数，用于初始化烟花的位置和速度
+const initFireworks = () => {
+  for (let i = 0; i < total; i++) {
+    isDead[i] = clock.getElapsedTime()
+    setTimeout(() => {
+      // 获取烟花的位置和速度属性
+      const positions = fireworks[i].geometry.attributes.position.array;
+      const velocities = fireworks[i].geometry.attributes.velocity.array;
+
+      var x = Math.random() * 300 - 150;
+      var y = Math.random() * 20 + 60;
+      if(x<-100||x>100){
+        y=Math.random() * 20 + 20;
+      }
+      var z = Math.random() * 20 - 110;
+      // 遍历每个粒子
+      for (let i = 0; i < particleCount; i++) {
+        // 设置粒子的初始位置为原点
+        positions[i * 3] = x;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = z;
+
+        // 设置一个随机的角度和半径
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 40;
+
+        // 设置粒子的初始速度为沿着球面均匀分布的方向和大小
+        velocities[i * 3] = radius * Math.cos(angle);
+        velocities[i * 3 + 1] = radius * Math.sin(angle);
+        velocities[i * 3 + 2] = 0
+
+      }
+
+
+      // 更新烟花的位置和速度属性
+      fireworks[i].geometry.attributes.position.needsUpdate = true;
+      fireworks[i].geometry.attributes.velocity.needsUpdate = true;
+    }, Math.random() * 5000)
+
+
   }
 
-  effect.render(scene, camera);
+};
+// 定义一个函数，用于更新烟花的位置和速度
+const updateFireworks = (delta) => {
+  for (let i = 0; i < total; i++) {
+    // 获取烟花的位置和速度属性
+    const positions = fireworks[i].geometry.attributes.position.array;
+    const velocities = fireworks[i].geometry.attributes.velocity.array;
 
-}
+    // 定义一个变量，用于判断烟花是否已经消失
+
+
+    // 遍历每个粒子
+    for (let i = 0; i < particleCount; i++) {
+      // 获取粒子的位置和速度
+      const x = positions[i * 3];
+      const y = positions[i * 3 + 1];
+      const z = positions[i * 3 + 2];
+      const vx = velocities[i * 3];
+      const vy = velocities[i * 3 + 1];
+      const vz = velocities[i * 3 + 2];
+
+      // 更新粒子的位置，根据速度和时间间隔
+      positions[i * 3] += vx * delta;
+      positions[i * 3 + 1] += vy * delta;
+      positions[i * 3 + 2] += vz * delta;
+
+      // 更新粒子的速度，根据重力加速度
+      velocities[i * 3 + 1] -= 10 / particleCount;
+
+    }
+
+    // 更新烟花的位置和速度属性
+    fireworks[i].geometry.attributes.position.needsUpdate = true;
+    fireworks[i].geometry.attributes.velocity.needsUpdate = true;
+
+    // 如果烟花已经消失，重新初始化烟花
+    const time = clock.getElapsedTime()
+
+    for (var j = 0; j < total; j++) {
+      if (time - isDead[i] >= 3) {
+
+        initFireworks();
+      }
+    }
+
+  }
+
+};
+
 </script>
 <style scoped>
+.canvas-container {
+  position: fixed;
+  left: 0;
+  top: 0;
+
+}
+
 #overlay {
   position: absolute;
   font-size: 16px;

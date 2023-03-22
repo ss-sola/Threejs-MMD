@@ -7,6 +7,10 @@
   <RouterView />
 </template>
 
-<style scoped>
-
+<style>
+canvas {
+    position: fixed;
+    left: 0;
+    top: 0;
+}
 </style>
