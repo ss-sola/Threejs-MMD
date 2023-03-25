@@ -18,9 +18,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
 import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
+
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 let stats;
 
@@ -28,7 +30,21 @@ let mesh, camera, scene, renderer, effect;
 let helper, ikHelper, physicsHelper;
 let ready, listener, audio, loader;
 
-let composer, outlinePass
+let composer, bloomPass, finalComposer
+const ENTIRE_SCENE = 0, BLOOM_SCENE = 3;
+
+let petalMaterial
+const darkMaterial = new THREE.MeshBasicMaterial({ color: 'black' });
+const materials = {};
+const bloomLayer = new THREE.Layers();
+bloomLayer.set(BLOOM_SCENE);
+
+const params = {
+  exposure: 1,
+  bloomStrength: 1.5,
+  bloomThreshold: 0,
+  bloomRadius: 0
+};
 const clock = new THREE.Clock();
 
 
@@ -69,8 +85,6 @@ function init() {
 
   listener = new THREE.AudioListener();
   camera.add(listener);
-  // scene.add(camera)
-  // scene
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
@@ -83,13 +97,10 @@ function init() {
   // 对光照进行调整
   const ambient = new THREE.AmbientLight(0xffffff, 0.95);
   scene.add(ambient);
-
-  // const directionalLight = new THREE.DirectionalLight(0xffffff,0.4);
-  // directionalLight.position.set(- 10, 100, 10).normalize();
-  // scene.add(directionalLight);
+  const light = new THREE.DirectionalLight(0xf5bd00, 0.1);
+  scene.add(light);
 
   //
-
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -114,9 +125,8 @@ function init() {
   loader.loadWithAnimation(modelFile, vmdFiles, function (mmd) {
 
     mesh = mmd.mesh;
-    //mesh.position.y = - 10;
+    mesh.castShadow = true
     scene.add(mesh);
-
     helper.add(mesh, {
       animation: mmd.animation,
       physics: true
@@ -163,7 +173,7 @@ function init() {
   instFireworks()
   initFireworks()
 
-
+  initComposer()
 
   function initGui() {
 
@@ -233,6 +243,29 @@ function init() {
       if (physicsHelper !== undefined) physicsHelper.visible = api['show rigid bodies'];
 
     });
+    gui.add(params, 'exposure', 0.1, 2).onChange(function (value) {
+
+      renderer.toneMappingExposure = Math.pow(value, 4.0);
+
+    });
+
+    gui.add(params, 'bloomThreshold', 0.0, 1.0).onChange(function (value) {
+
+      bloomPass.threshold = Number(value);
+
+    });
+
+    gui.add(params, 'bloomStrength', 0.0, 3.0).onChange(function (value) {
+
+      bloomPass.strength = Number(value);
+
+    });
+
+    gui.add(params, 'bloomRadius', 0.0, 1.0).step(0.01).onChange(function (value) {
+
+      bloomPass.radius = Number(value);
+
+    });
     gui.closed = true;
 
   }
@@ -281,8 +314,9 @@ function animate() {
     updateFireworks(clock.getDelta())
   }
 
-  effect.render(scene, camera);
+  // effect.render(scene, camera);
   stats.end();
+  render();
 
 }
 
@@ -306,7 +340,7 @@ function initPetals() {
   });
 
   // 循环创建100个花瓣对象，并添加到场景中
-  for (var i = 0; i < 100; i++) {
+  for (var i = 0; i < 200; i++) {
     // 创建一个网格对象，使用上面定义的几何体和材质
     var petal = new THREE.Mesh(geometry, material);
 
@@ -325,11 +359,10 @@ function initPetals() {
 
     petal.material.side = THREE.DoubleSide;
     petal.scale.set(0.5, 0.2, 0.5);
+
+    petal.layers.enable(BLOOM_SCENE)
     // 将花瓣对象添加到数组中
     petals.push(petal);
-    // 将立方体添加到selectedObjects数组中
-    //outlinePass.selectedObjects.push(petal);
-
     // 将花瓣对象添加到场景中
     scene.add(petal);
   }
@@ -363,10 +396,76 @@ function updatePetals() {
   }
 }
 
+//花瓣辉光效果
+let bloomComposer
+function initComposer() {
+  const renderScene = new RenderPass(scene, camera);
+
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+  bloomPass.threshold = params.bloomThreshold;
+  bloomPass.strength = params.bloomStrength;
+  bloomPass.radius = params.bloomRadius;
+
+  bloomComposer = new EffectComposer(renderer);
+  bloomComposer.renderToScreen = false;
+  bloomComposer.addPass(renderScene);
+  bloomComposer.addPass(bloomPass);
+
+  const finalPass = new ShaderPass(
+    new THREE.ShaderMaterial({
+      uniforms: {
+        baseTexture: { value: null },
+        bloomTexture: { value: bloomComposer.renderTarget2.texture }
+      },
+      vertexShader: document.getElementById('vertexshader').textContent,
+      fragmentShader: document.getElementById('fragmentshader').textContent,
+      defines: {}
+    }), 'baseTexture'
+  );
+  finalPass.needsSwap = true;
+
+  finalComposer = new EffectComposer(renderer);
+  finalComposer.addPass(renderScene);
+  finalComposer.addPass(finalPass);
+}
+
+function render() {
+  // render the entire scene, then render bloom scene on top
+  scene.traverse(darkenNonBloomed);
+  bloomComposer.render();
+  scene.traverse(restoreMaterial);
+  finalComposer.render();
+
+}
+
+function darkenNonBloomed(obj) {
+
+  if (bloomLayer.test(obj.layers) != true) {
+
+    materials[obj.uuid] = obj.material;
+    obj.material = darkMaterial;
+
+  }
+
+}
+
+function restoreMaterial(obj) {
+
+  if (materials[obj.uuid]) {
+    obj.material = materials[obj.uuid];
+    delete materials[obj.uuid];
+
+  }
+
+}
+
+
+
+//点光源
 function initPointLight(x, y, z) {
   // 创建球体当灯泡
-  let radius = 1.5;
-  const sphereGeometry = new THREE.SphereGeometry(0.15, 32, 32);
+  let radius = 0.5;
+  const sphereGeometry = new THREE.SphereGeometry(radius, 32, 32);
   const sphereMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
@@ -376,25 +475,25 @@ function initPointLight(x, y, z) {
   //pointLightArr.push(sphere);
   sphere.position.set(x, y, z);
 
-  let pointLight = new THREE.PointLight(0xebce97, 0.05);
+  let pointLight = new THREE.PointLight(0xebce97, 0.5, 20, 1);
+  pointLight.layers.enable(BLOOM_SCENE)
   sphere.add(pointLight);
   scene.add(sphere)
 }
 
 function loadModel(path) {
 
-  if (mesh) {
-    scene.remove(mesh);
-  }
   loader.load(path, (mmd) => {
-    mesh = mmd;
 
-    scene.add(mesh)
-    console.log(mesh);
-
+    for (var i = 0; i < mmd.material.length; i++) {
+      mmd.material[i].uniforms.shininess.value = 10
+    }
+    mmd.castShadow = true
+    scene.add(mmd)
   }, onProgress, null)
 }
 
+//烟花效果
 let total = 10;//烟花数
 let fireworks = [], isDead = []
 const particleCount = 1000; // 粒子数量
@@ -406,8 +505,25 @@ function instFireworks() {
     // 创建烟花粒子
 
     const color = Math.random() * 0xffffff
+    // 创建一个画布元素
+    var canvas = document.createElement('canvas');
+    var context = canvas.getContext('2d');
+
+    // 设置画布的宽度和高度
+    canvas.width = 64;
+    canvas.height = 64;
+
+    // 绘制一个圆形
+    context.beginPath();
+    context.arc(32, 32, 30, 0, Math.PI * 2);
+    context.fillStyle = 'white';
+    context.fill();
+
+    // 创建一个CanvasTexture对象，并设置其源为画布元素
+    var texture = new THREE.CanvasTexture(canvas);
     // 创建烟花几何体
     const geometry = new THREE.BufferGeometry();
+
     geometry.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(
@@ -430,10 +546,13 @@ function instFireworks() {
       transparent: true,
       depthTest: true,
       blending: THREE.AdditiveBlending,
+      map: texture,
+      transparent: true
     });
-    //const pointLight = new THREE.PointLight(color, 0.05);
+    //const pointLight = new THREE.PointLight(color, 0.1);
     // 创建烟花对象
     const firework = new THREE.Points(geometry, material);
+    firework.layers.enable(3)
     //firework.add(pointLight)
     fireworks.push(firework)
     // 将烟花添加到场景中
@@ -454,8 +573,8 @@ const initFireworks = () => {
 
       var x = Math.random() * 300 - 150;
       var y = Math.random() * 20 + 60;
-      if(x<-100||x>100){
-        y=Math.random() * 20 + 20;
+      if (x < -100 || x > 100) {
+        y = Math.random() * 20 + 20;
       }
       var z = Math.random() * 20 - 110;
       // 遍历每个粒子
