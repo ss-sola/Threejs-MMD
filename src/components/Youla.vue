@@ -1,7 +1,14 @@
 <template>
   <div id="canvas-container" class="canvas-container" ref="screenDom"></div>
+  <div id="info">
+        若地面没有图案,请刷新重试
+    </div>
   <div id="overlay">
-    <button @click="start" id="startButton">{{ progress == 100 ? 'play' : progress + '%' }}</button>
+    <button @click="start" id="startButton">
+      <div>{{ progress == 100 ? 'play' : progress + '%' }}</div>
+      <!-- <div>若地面没有图案</div>
+      <div>请刷新重试</div> -->
+    </button>
   </div>
 </template>
 
@@ -17,6 +24,9 @@ import * as dat from "dat.gui";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
 import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
 
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -30,10 +40,9 @@ let mesh, camera, scene, renderer, effect;
 let helper, ikHelper, physicsHelper;
 let ready, listener, audio, loader;
 
-let composer, bloomPass, finalComposer
+let bloomPass, finalComposer
 const ENTIRE_SCENE = 0, BLOOM_SCENE = 3;
 
-let petalMaterial
 const darkMaterial = new THREE.MeshBasicMaterial({ color: 'black' });
 const materials = {};
 const bloomLayer = new THREE.Layers();
@@ -41,9 +50,9 @@ bloomLayer.set(BLOOM_SCENE);
 
 const params = {
   exposure: 1,
-  bloomStrength: 1.5,
+  bloomStrength: 0.7,
   bloomThreshold: 0,
-  bloomRadius: 0
+  bloomRadius: 1
 };
 const clock = new THREE.Clock();
 
@@ -89,9 +98,6 @@ function init() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(0x000000, 0, 500);
-  // const gridHelper = new THREE.PolarGridHelper(40, 10);
-  // //gridHelper.position.y = - 10;
-  // scene.add(gridHelper);
 
 
   // 对光照进行调整
@@ -156,8 +162,8 @@ function init() {
 
   }, onProgress, null);
 
-  loadModel('/scence/《弹指醉》场景配布/scene.pmx')
-
+  //loadModel('/scence/《弹指醉》场景配布/scene.pmx')
+  loadGltfModel('/scence/model.glb')
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.minDistance = 1;
   controls.maxDistance = 1000;
@@ -243,17 +249,17 @@ function init() {
       if (physicsHelper !== undefined) physicsHelper.visible = api['show rigid bodies'];
 
     });
-    gui.add(params, 'exposure', 0.1, 2).onChange(function (value) {
+    // gui.add(params, 'exposure', 0.1, 2).onChange(function (value) {
 
-      renderer.toneMappingExposure = Math.pow(value, 4.0);
+    //   renderer.toneMappingExposure = Math.pow(value, 4.0);
 
-    });
+    // });
 
-    gui.add(params, 'bloomThreshold', 0.0, 1.0).onChange(function (value) {
+    // gui.add(params, 'bloomThreshold', 0.0, 1.0).onChange(function (value) {
 
-      bloomPass.threshold = Number(value);
+    //   bloomPass.threshold = Number(value);
 
-    });
+    // });
 
     gui.add(params, 'bloomStrength', 0.0, 3.0).onChange(function (value) {
 
@@ -488,9 +494,86 @@ function loadModel(path) {
     for (var i = 0; i < mmd.material.length; i++) {
       mmd.material[i].uniforms.shininess.value = 10
     }
+    mmd.layers.enable(BLOOM_SCENE)
+    mmd.material[3].emissive = new THREE.Color(0x000000)
+    console.log(mmd);
     mmd.castShadow = true
     scene.add(mmd)
   }, onProgress, null)
+}
+
+const materialColors = [
+  {
+    name: '柱水晶',
+    color: 0x515ba5
+  },
+  {
+    name: '万象天文-地板装饰',
+    color: 0x252e59
+  },
+  {
+    name: "柱水晶边框",
+    color: 0xafa04c
+  },
+  {
+    name: "水晶",
+    color: 0x4c5488
+  },
+  {
+    name: "水晶边框",
+    color: 0xe9d5aa
+  },
+  {
+    name: "吊饰水晶",
+    color: 0x4c5488
+  },
+  {
+    name: "吊饰四面体",
+    color: 0xe9d5aa
+  },
+  {
+    name: "四面体",
+    color: 0xe9d5aa
+  },
+  {
+    name: "吊饰水晶边框",
+    color: 0xe9d5aa
+  },
+  {
+    name: "圆环",
+    color: 0xeceeed
+  },
+  {
+    name: "主体1",
+    color: 0xffff49
+  }
+]
+function loadGltfModel(path) {
+  const dracoLoader = new DRACOLoader();
+  const loader = new GLTFLoader();
+  loader.setDRACOLoader(dracoLoader);
+  loader.load(path, (gltf) => {
+    const model = gltf.scene;
+    model.traverse((obj) => {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+      if (obj.isMesh) {
+        obj.layers.enable(BLOOM_SCENE)
+        for (var i = 0; i < materialColors.length; i++) {
+          if (obj.name == materialColors[i].name) {
+            obj.material.color = new THREE.Color(materialColors[i].color)
+          }
+        }
+
+
+        obj.material.side = THREE.DoubleSide;
+      }
+    })
+    //model.scale.set(5, 5, 5)
+    console.log(gltf);
+    scene.add(model)
+
+  }, null, null)
 }
 
 //烟花效果
@@ -572,10 +655,7 @@ const initFireworks = () => {
       const velocities = fireworks[i].geometry.attributes.velocity.array;
 
       var x = Math.random() * 300 - 150;
-      var y = Math.random() * 20 + 60;
-      if (x < -100 || x > 100) {
-        y = Math.random() * 20 + 20;
-      }
+      var y = y = Math.random() * 20 + 20;
       var z = Math.random() * 20 - 110;
       // 遍历每个粒子
       for (let i = 0; i < particleCount; i++) {
@@ -686,5 +766,20 @@ const updateFireworks = (delta) => {
   padding: 12px 18px;
   text-transform: uppercase;
   cursor: pointer;
+}
+#info {
+    color:#ffffff;
+	position: fixed;
+	top: 0px;
+	width: 100%;
+	padding: 10px;
+	box-sizing: border-box;
+	text-align: center;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	pointer-events: none;
+	z-index: 1; /* TODO Solve this in HTML */
 }
 </style>

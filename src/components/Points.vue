@@ -3,7 +3,7 @@
         <canvas ref="canvas"></canvas>
     </div>
 </template>
-
+  
 <script>
 import { onMounted, ref } from "vue";
 import * as THREE from "three";
@@ -28,7 +28,6 @@ export default {
                 1000
             );
             camera.position.set(0, 10, 20);
-            camera.lookAt(0, 10, 0)
 
             // 创建渲染器
             const renderer = new THREE.WebGLRenderer({
@@ -75,23 +74,6 @@ export default {
                     )
                 );
 
-                // 创建一个画布元素
-                var canvas = document.createElement('canvas');
-                var context = canvas.getContext('2d');
-
-                // 设置画布的宽度和高度
-                canvas.width = 64;
-                canvas.height = 64;
-
-                // 绘制一个圆形
-                context.beginPath();
-                context.arc(32, 32, 30, 0, Math.PI * 2);
-                context.fillStyle = 'white';
-                context.fill();
-
-                // 创建一个CanvasTexture对象，并设置其源为画布元素
-                var texture = new THREE.CanvasTexture(canvas);
-
                 const color = Math.random() * 0xffffff
                 // 创建烟花材质
                 const material = new THREE.PointsMaterial({
@@ -99,8 +81,6 @@ export default {
                     color: color,
                     transparent: true,
                     depthTest: false,
-                    map: texture,
-                    transparent: true
                     //blending: THREE.AdditiveBlending,
                 });
                 const pointLight = new THREE.PointLight(color, 1);

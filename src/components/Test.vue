@@ -1,230 +1,353 @@
 <template>
-    <div id="app">
-        <canvas ref="canvas"></canvas>
-    </div>
+    <div id="canvas-container" class="canvas-container" ref="screenDom"></div>
 </template>
-  
-<script>
-import { onMounted, ref } from "vue";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { color } from "dat.gui";
 
-export default {
-    setup() {
-        const canvas = ref(null);
+<script setup>
+import * as THREE from 'three';
+import { defineComponent, onMounted, ref } from "vue";
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+import Stats from 'three/addons/libs/stats.module.js';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-        onMounted(() => {
-            // 创建场景
-            const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
-
-            // 创建相机
-            const camera = new THREE.PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
-            camera.position.set(0, 10, 20);
-
-            // 创建渲染器
-            const renderer = new THREE.WebGLRenderer({
-                canvas: canvas.value,
-                antialias: true,
-            });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-
-            // 创建轨道控制器
-            const controls = new OrbitControls(camera, renderer.domElement);
-            controls.minDistance = 1;
-            controls.maxDistance = 1000;
-            controls.enableDamping = true;
-
-            // 创建灯光
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
+//导入dat.gui
+import * as dat from "dat.gui";
 
 
-            let total = 10;//烟花数
-            let fireworks = [], isDead = []
-            // 创建烟花粒子
-            const particleCount = 1000; // 粒子数量
-            const particleSize = 0.1; // 粒子大小
-            const particleSpeed = 40; // 粒子速度
+let camera, scene, renderer, stats, effect
+let composer, bloomPass, finalComposer
+const ENTIRE_SCENE = 0, BLOOM_SCENE = 3;
 
+let petalMaterial
+const darkMaterial = new THREE.MeshBasicMaterial({ color: 'black' });
+const materials = {};
+const bloomLayer = new THREE.Layers();
+bloomLayer.set(BLOOM_SCENE);
 
-            for (var i = 0; i < total; i++) {
-                // 创建烟花几何体
-                const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute(
-                    "position",
-                    new THREE.Float32BufferAttribute(
-                        new Array(particleCount * 3).fill(0),
-                        3
-                    )
-                );
-                geometry.setAttribute(
-                    "velocity",
-                    new THREE.Float32BufferAttribute(
-                        new Array(particleCount * 3).fill(0),
-                        3
-                    )
-                );
-
-                const color = Math.random() * 0xffffff
-                // 创建烟花材质
-                const material = new THREE.PointsMaterial({
-                    size: particleSize,
-                    color: color,
-                    transparent: true,
-                    depthTest: false,
-                    //blending: THREE.AdditiveBlending,
-                });
-                const pointLight = new THREE.PointLight(color, 1);
-                // 创建烟花对象
-                const firework = new THREE.Points(geometry, material);
-                firework.add(pointLight)
-                fireworks.push(firework)
-                // 将烟花添加到场景中
-                scene.add(firework);
-                isDead[i] = 0
-
-            }
-
-            // 定义一个函数，用于初始化烟花的位置和速度
-            const initFireworks = () => {
-                for (let i = 0; i < total; i++) {
-                    isDead[i] = clock.getElapsedTime()
-                    setTimeout(() => {
-                        // 获取烟花的位置和速度属性
-                        const positions = fireworks[i].geometry.attributes.position.array;
-                        const velocities = fireworks[i].geometry.attributes.velocity.array;
-
-                        var x = Math.random() * 100 - 50;
-                        var y = Math.random() * 10 + 5;
-                        var z = Math.random() * 5 - 15;
-                        // 遍历每个粒子
-                        for (let i = 0; i < particleCount; i++) {
-                            // 设置粒子的初始位置为原点
-                            positions[i * 3] = x;
-                            positions[i * 3 + 1] = y;
-                            positions[i * 3 + 2] = z;
-
-                            // 设置一个随机的角度和半径
-                            const angle = Math.random() * Math.PI * 2;
-                            const angle2 = Math.random() * Math.PI * 2;
-                            const radius = Math.random() * 3;
-
-                            // 设置粒子的初始速度为沿着球面均匀分布的方向和大小
-                            velocities[i * 3] = radius * Math.cos(angle);
-                            velocities[i * 3 + 1] = radius * Math.sin(angle);
-                            velocities[i * 3 + 2] = 0
-
-                        }
-
-
-                        // 更新烟花的位置和速度属性
-                        fireworks[i].geometry.attributes.position.needsUpdate = true;
-                        fireworks[i].geometry.attributes.velocity.needsUpdate = true;
-                    }, Math.random() * 5000)
-
-
-                }
-
-            };
-
-
-
-            // 定义一个函数，用于更新烟花的位置和速度
-            const updateFireworks = (delta) => {
-                for (let i = 0; i < total; i++) {
-                    // 获取烟花的位置和速度属性
-                    const positions = fireworks[i].geometry.attributes.position.array;
-                    const velocities = fireworks[i].geometry.attributes.velocity.array;
-
-                    // 定义一个变量，用于判断烟花是否已经消失
-
-
-                    // 遍历每个粒子
-                    for (let i = 0; i < particleCount; i++) {
-                        // 获取粒子的位置和速度
-                        const x = positions[i * 3];
-                        const y = positions[i * 3 + 1];
-                        const z = positions[i * 3 + 2];
-                        const vx = velocities[i * 3];
-                        const vy = velocities[i * 3 + 1];
-                        const vz = velocities[i * 3 + 2];
-
-                        // 更新粒子的位置，根据速度和时间间隔
-                        positions[i * 3] += vx * delta;
-                        positions[i * 3 + 1] += vy * delta;
-                        positions[i * 3 + 2] += vz * delta;
-
-                        // 更新粒子的速度，根据重力加速度
-                        velocities[i * 3 + 1] -= particleSpeed / particleCount;
-
-                    }
-
-                    // 更新烟花的位置和速度属性
-                    fireworks[i].geometry.attributes.position.needsUpdate = true;
-                    fireworks[i].geometry.attributes.velocity.needsUpdate = true;
-
-                    // 如果烟花已经消失，重新初始化烟花
-                    const time = clock.getElapsedTime()
-
-                    for (var j = 0; j < total; j++) {
-                        if (time - isDead[i] >= 3) {
-
-                            initFireworks();
-                        }
-                    }
-
-                }
-
-            };
-
-            // 定义一个函数，用于渲染场景
-            const render = () => {
-                // 获取时间间隔
-                const delta = clock.getDelta();
-
-                // 更新轨道控制器
-                //controls.update();
-
-                // 更新烟花的位置和速度
-                updateFireworks(delta);
-                // 渲染场景
-                renderer.render(scene, camera);
-
-                // 请求下一帧动画
-                requestAnimationFrame(render);
-            };
-
-            // 创建一个时钟对象，用于计算时间间隔
-            const clock = new THREE.Clock();
-
-
-            // 初始化烟花
-            initFireworks();
-
-
-            // 开始渲染场景
-            render();
-        });
-
-        return {
-            canvas,
-        };
-    },
+const params = {
+    exposure: 1,
+    bloomStrength: 0.7,
+    bloomThreshold: 0,
+    bloomRadius: 1,
+    scene: 'Scene with Glow'
 };
-</script>
-<style>
-canvas {
-    position: fixed;
-    left: 0;
-    top: 0;
+
+
+onMounted(() => {
+    init()
+    animate()
+    initGui()
+})
+
+function init() {
+    const container = document.getElementById("canvas-container")
+
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.z = 50;
+    camera.position.y = 30;
+
+
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    // scene.fog = new THREE.Fog(0x000000, 0, 500);
+
+
+    // 对光照进行调整
+    const ambient = new THREE.AmbientLight(0xffffff, 0.95);
+    scene.add(ambient);
+
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+
+    effect = new OutlineEffect(renderer);
+    effect.enabled = false
+
+
+    // STATS
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.minDistance = 1;
+    controls.maxDistance = 1000;
+
+    stats = new Stats();
+    container.appendChild(stats.dom);
+
+    //loadMMdModel('/scence/万象天文/万象天文-吊饰.pmx')
+    loadGltfModel('/scence/model.glb')
+    initPetals()
+    initComposer()
 }
-</style>  
+
+function initGui() {
+    const gui = new dat.GUI();
+
+    gui.add(params, 'exposure', 0.1, 2).onChange(function (value) {
+
+        renderer.toneMappingExposure = Math.pow(value, 4.0);
+
+    });
+
+    gui.add(params, 'bloomThreshold', 0.0, 5.0).onChange(function (value) {
+
+        bloomPass.threshold = Number(value);
+
+    });
+
+    gui.add(params, 'bloomStrength', 0.0, 1.0).step(0.001).onChange(function (value) {
+
+        bloomPass.strength = Number(value);
+
+    });
+
+    gui.add(params, 'bloomRadius', 0.0, 1.0).step(0.01).onChange(function (value) {
+
+        bloomPass.radius = Number(value);
+
+    });
+}
+function animate() {
+
+    requestAnimationFrame(animate);
+
+    stats.begin();
+    updatePetals()
+
+    render();
+    stats.end();
+
+}
+
+//setTimeout(()=>{render()},2000)
+// 创建一个数组，用于存储100个花瓣对象
+var petals = [];
+function initPetals() {
+    //endRander()
+    var shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.bezierCurveTo(0.5, 1.5, 1.5, 1.5, 2, 0);
+    shape.bezierCurveTo(1.5, -1.5, 0.5, -1.5, 0, 0);
+
+    // 创建一个花瓣的几何体
+    const geometry = new THREE.ShapeGeometry(shape);
+
+    // 创建一个纹理加载器，用于加载花瓣的图片
+    var textureLoader = new THREE.TextureLoader();
+    petalMaterial = new THREE.MeshBasicMaterial({
+        map: textureLoader.load('/textures/h.jpg'), // 使用Getty Images提供的图片作为纹理
+        transparent: true // 设置透明度为true，以便显示图片中的透明部分
+    });
+
+    // 循环创建100个花瓣对象，并添加到场景中
+    for (var i = 0; i < 100; i++) {
+        // 创建一个网格对象，使用上面定义的几何体和材质
+        var petal = new THREE.Mesh(geometry, petalMaterial);
+
+        // 随机设置花瓣的位置和旋转角度
+        petal.position.x = Math.random() * 100 - 50;
+        petal.position.y = Math.random() * 100 - 50;
+        petal.position.z = Math.random() * 100 - 50;
+        petal.rotation.x = Math.random() * Math.PI * 2;
+        petal.rotation.y = Math.random() * Math.PI * 2;
+        petal.rotation.z = Math.random() * Math.PI * 2;
+
+        // 随机设置花瓣的速度
+        petal.velocityX = Math.random() * 0.2 - 0.01;
+        petal.velocityY = -Math.random() * 0.01 - 0.05;
+        petal.velocityZ = Math.random() * 0.02 - 0.01;
+
+        petal.material.side = THREE.DoubleSide;
+        petal.scale.set(0.5, 0.2, 0.5);
+        petal.layers.enable(3)
+        // 将花瓣对象添加到数组中
+        petals.push(petal);
+        // 将立方体添加到selectedObjects数组中
+        //outlinePass.selectedObjects.push(petal);
+
+        // 将花瓣对象添加到场景中
+        scene.add(petal);
+    }
+}
+
+function updatePetals() {
+    // 循环遍历所有的花瓣对象，并更新它们的位置和旋转角度 
+    for (var i = 0; i < petals.length; i++) {
+        var petal = petals[i];
+
+        // 更新位置和旋转角度 
+        petal.position.x += petal.velocityX;
+        petal.position.y += petal.velocityY;
+        petal.position.z += petal.velocityZ;
+        petal.rotation.x += petal.velocityX / 10;
+        petal.rotation.y += petal.velocityY / 10;
+        // 如果花瓣的位置超出了屏幕的范围，就将它重置到屏幕顶部 
+        if (petal.position.y < -5) {
+            petal.position.x = Math.random() * 100 - 50;
+            petal.position.y = 60;
+            petal.position.z = Math.random() * 100 - 50;
+            petal.velocityX = Math.random() * 0.02 - 0.01;
+            petal.velocityY = -Math.random() * 0.1 - 0.05;
+            petal.velocityZ = Math.random() * 0.02 - 0.01;
+        }
+    }
+}
+
+const materialColors = [
+    {
+        name: '柱水晶',
+        color: 0x515ba5
+    },
+    {
+        name: '万象天文-地板装饰',
+        color: 0x252e59
+    },
+    {
+        name:"柱水晶边框",
+        color:0xafa04c
+    },
+    {
+        name:"水晶",
+        color:0x4c5488
+    },
+    {
+        name:"水晶边框",
+        color:0xe9d5aa
+    },
+    {
+        name:"吊饰水晶",
+        color:0x4c5488
+    },
+    {
+        name:"吊饰四面体",
+        color:0x4c5488
+    },
+    {
+        name:"四面体",
+        color:0xe9d5aa
+    },
+    {
+        name:"吊饰水晶边框",
+        color:0xe9d5aa
+    },
+    {
+      name:"圆环",
+      color:0xeceeed  
+    },
+    // {
+    //     name:"地板",
+    //     color:0x28315e
+    // },
+    {
+        name:"主体1",
+        color:0xffff49
+    }
+]
+function loadGltfModel(path) {
+    const dracoLoader = new DRACOLoader();
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
+    loader.load(path, (gltf) => {
+        const model = gltf.scene;
+        model.traverse((obj) => {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+            if (obj.isMesh) {
+                for(var i=0;i<materialColors.length;i++){
+                    if(obj.name==materialColors[i].name){
+                        obj.material.color=new THREE.Color(materialColors[i].color)
+                    }
+                }
+
+
+                obj.material.side = THREE.DoubleSide;
+            }
+        })
+        //model.scale.set(5, 5, 5)
+        console.log(gltf);
+        scene.add(model)
+
+    }, null, null)
+}
+function loadMMdModel(path) {
+    const loader = new MMDLoader();
+    loader.load(path, (mmd) => {
+        console.log(mmd);
+        scene.add(mmd)
+    }, null, null)
+}
+let bloomComposer
+function initComposer() {
+    const renderScene = new RenderPass(scene, camera);
+
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+    bloomPass.threshold = params.bloomThreshold;
+    bloomPass.strength = params.bloomStrength;
+    bloomPass.radius = params.bloomRadius;
+
+    bloomComposer = new EffectComposer(renderer);
+    bloomComposer.renderToScreen = false;
+    bloomComposer.addPass(renderScene);
+    bloomComposer.addPass(bloomPass);
+
+
+    const finalPass = new ShaderPass(
+        new THREE.ShaderMaterial({
+            uniforms: {
+                baseTexture: { value: null },
+                bloomTexture: { value: bloomComposer.renderTarget2.texture }
+            },
+            vertexShader: document.getElementById('vertexshader').textContent,
+            fragmentShader: document.getElementById('fragmentshader').textContent,
+            defines: {}
+        }), 'baseTexture'
+    );
+    finalPass.needsSwap = true;
+
+    finalComposer = new EffectComposer(renderer);
+    finalComposer.addPass(renderScene);
+    finalComposer.addPass(finalPass);
+    render()
+}
+
+function render() {
+    // render the entire scene, then render bloom scene on top
+    scene.traverse(darkenNonBloomed);
+    bloomComposer.render();
+    scene.traverse(restoreMaterial);
+    finalComposer.render();
+
+}
+
+function darkenNonBloomed(obj) {
+
+    // if (bloomLayer.test(obj.layers) != true) {
+    //     materials[obj.uuid] = obj.material;
+    //     obj.material = darkMaterial;
+
+    // }
+
+}
+
+function restoreMaterial(obj) {
+
+    if (materials[obj.uuid]) {
+        obj.material = materials[obj.uuid];
+        delete materials[obj.uuid];
+
+    }
+
+}
+
+
+</script>
+<style scoped></style>

@@ -265,7 +265,6 @@ function render() {
 function darkenNonBloomed(obj) {
 
     if (bloomLayer.test(obj.layers) != true) {
-console.log(obj);
         materials[obj.uuid] = obj.material;
         obj.material = darkMaterial;
 
