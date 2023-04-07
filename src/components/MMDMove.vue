@@ -47,7 +47,7 @@ const api = {
     'physics': true,
     'show IK bones': false,
     'show rigid bodies': false,
-    'model': '优拉',
+    'model': '爱莉希雅',
     'action': '极乐净土'
 };
 
@@ -157,6 +157,8 @@ function initModel(model, action) {
 
         mesh = mmd.mesh;
         scene.add(mesh);
+        console.log(mmd);
+
 
         helper.add(mesh, {
             animation: mmd.animation,
@@ -173,11 +175,11 @@ function initModel(model, action) {
         //         animation: cameraAnimation
         //     });
         // })
-        if(audio){
-          audio.stop();
-        audio.play()  
+        if (audio) {
+            audio.stop();
+            audio.play()
         }
-        
+
 
         ikHelper = helper.objects.get(mesh).ikSolver.createHelper();
         ikHelper.visible = false;
@@ -246,7 +248,7 @@ function initGui() {
         mixer.stopAllAction()
         audio.pause();
         loadVmd('./mmd/vmd/' + api['action'] + '/action.vmd')
-        initAudio('./mmd/vmd/' + api['action'] + '/music.wav','./mmd/vmd/' + api['action'] + '/music.mp3')
+        initAudio('./mmd/vmd/' + api['action'] + '/music.wav', './mmd/vmd/' + api['action'] + '/music.mp3')
 
     })
 
@@ -328,8 +330,8 @@ function onProgress(xhr) {
 
 }
 function initAudio(path, path2) {
-   
-    if (!audioLoader||!audio) {
+
+    if (!audioLoader || !audio) {
         audioLoader = new THREE.AudioLoader();
         audio = new THREE.Audio(listener)
     }
@@ -393,8 +395,8 @@ function animate() {
     const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
     if (ready) {
         for (let i = 0; i < STEPS_PER_FRAME; i++) {
-             controls(deltaTime);
-             updatePlayer(deltaTime);
+            controls(deltaTime);
+            updatePlayer(deltaTime);
             helper.update(deltaTime);
             // updateSpheres(deltaTime);
             // teleportPlayerIfOob();
@@ -456,7 +458,7 @@ function controls(deltaTime) {
         }
 
     }
-    if (keyStates['ControlLeft']||keyStates['ControlRight']) {
+    if (keyStates['ControlLeft'] || keyStates['ControlRight']) {
 
         playerVelocity.y = -15;
 
@@ -508,20 +510,22 @@ function updatePlayer(deltaTime) {
 </script>
 <style scoped>
 #info {
-    color:#ffffff;
-	position: fixed;
-	top: 0px;
-	width: 100%;
-	padding: 10px;
-	box-sizing: border-box;
-	text-align: center;
-	-moz-user-select: none;
-	-webkit-user-select: none;
-	-ms-user-select: none;
-	user-select: none;
-	pointer-events: none;
-	z-index: 1; /* TODO Solve this in HTML */
+    color: #ffffff;
+    position: fixed;
+    top: 0px;
+    width: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+    text-align: center;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    pointer-events: none;
+    z-index: 1;
+    /* TODO Solve this in HTML */
 }
+
 #overlay {
     position: absolute;
     font-size: 16px;
